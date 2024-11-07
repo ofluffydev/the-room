@@ -10,6 +10,7 @@ pub enum CustomErrors {
     PGError(PGError),
     PGMError(PGMError),
     PoolError(PoolError),
+    DatabaseError
 }
 
 impl ResponseError for CustomErrors {

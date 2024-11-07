@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use actix_web::{web, App, Error, HttpResponse, HttpServer};
 use confik::{Configuration as _, EnvSource};
 use deadpool_postgres::{Client, Pool};
@@ -20,12 +22,17 @@ async fn about() -> HttpResponse {
     HttpResponse::Ok().body(ABOUT_MESSAGE)
 }
 
-pub async fn get_messages(db_pool: web::Data<Pool>) -> Result<HttpResponse, Error> {
+pub async fn get_messages(
+    db_pool: web::Data<Pool>,
+    query: web::Query<HashMap<String, String>>,
+) -> Result<HttpResponse, Error> {
     let client: Client = db_pool.get().await.map_err(CustomErrors::PoolError)?;
 
-    let users = db::get_messages(&client).await?;
+    let last: Option<usize> = query.get("last").and_then(|val| val.parse().ok());
 
-    Ok(HttpResponse::Ok().json(users))
+    let messages = db::get_messages(&client, last).await?;
+
+    Ok(HttpResponse::Ok().json(messages))
 }
 
 pub async fn add_message(
@@ -36,9 +43,18 @@ pub async fn add_message(
 
     let client: Client = db_pool.get().await.map_err(CustomErrors::PoolError)?;
 
-    let new_user = db::add_message(&client, user_info).await?;
-
-    Ok(HttpResponse::Ok().json(new_user))
+    // Attempt to add the message
+    match db::add_message(&client, user_info).await {
+        Ok(new_user) => {
+            println!("Message added successfully: {:?}", new_user);
+            Ok(HttpResponse::Ok().json(new_user))
+        }
+        Err(e) => {
+            println!("Error adding message: {:?}", e);
+            // Return appropriate error response
+            Err(actix_web::error::ErrorNotFound(e))
+        }
+    }
 }
 
 #[actix_web::main]
