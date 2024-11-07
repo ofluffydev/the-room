@@ -24,7 +24,7 @@ You typically will use the last query parameter to specify the number of message
 
 You can get the last X amount of messages by sending a GET request to the `/messages` endpoint with the last query parameter.
 
-```
+```http
 GET /messages?last=10
 ```
 
