@@ -12,4 +12,4 @@ if [ ! -f .env ]; then
 fi
 
 # Run diesel setup
-diesel setup
+# diesel setup
