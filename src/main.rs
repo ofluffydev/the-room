@@ -1,71 +1,60 @@
-use actix_web::{get, post, App, HttpResponse, HttpServer, Responder};
-use log::{error, info};
-use the_room::models::{Message, NewMessage};
+use actix_web::{web, App, Error, HttpResponse, HttpServer};
+use confik::{Configuration as _, EnvSource};
+use deadpool_postgres::{Client, Pool};
+use dotenvy::dotenv;
+use tokio_postgres::NoTls;
 
-mod message_manager;
+use crate::config::ExampleConfig;
 
-const INFO_MESSAGE: &str =
-    "Welcome to the server! You can send both GET and POST requests to /messages.";
+mod config;
+mod db;
+mod errors;
+mod models;
 
-#[get("/")]
-async fn hello() -> impl Responder {
-    HttpResponse::Ok().body(INFO_MESSAGE)
+use self::{errors::CustomErrors, models::Message};
+
+pub async fn get_messages(db_pool: web::Data<Pool>) -> Result<HttpResponse, Error> {
+    let client: Client = db_pool.get().await.map_err(CustomErrors::PoolError)?;
+
+    let users = db::get_messages(&client).await?;
+
+    Ok(HttpResponse::Ok().json(users))
 }
 
-#[get("/messages")]
-async fn get_messages() -> impl Responder {
-    // Return literally all the messages on the Postgres database using diesel
-    let messages: Vec<Message> = message_manager::grab_all_messages();
+pub async fn add_message(
+    user: web::Json<Message>,
+    db_pool: web::Data<Pool>,
+) -> Result<HttpResponse, Error> {
+    let user_info: Message = user.into_inner();
 
-    if messages.is_empty() {
-        return HttpResponse::Ok().body("No messages");
-    }
+    let client: Client = db_pool.get().await.map_err(CustomErrors::PoolError)?;
 
-    // Build a JSON string from the messages
-    let message_string = match serde_json::to_string(&messages) {
-        Ok(s) => s,
-        Err(_) => return HttpResponse::InternalServerError().body("Error serializing messages"),
-    };
+    let new_user = db::add_message(&client, user_info).await?;
 
-    HttpResponse::Ok().body(message_string)
-}
-
-#[post("/messages")]
-async fn send_message(req_body: String) -> impl Responder {
-    /*
-    {
-        "username": "John Doe",
-        "body": "Hello, world!"}
-     */
-    let message: NewMessage = match serde_json::from_str(&req_body) {
-        Ok(msg) => msg,
-        Err(_) => return HttpResponse::BadRequest().body("Invalid JSON format"),
-    };
-
-    info!("{} said: \"{}\"", message.username, message.body);
-
-    // Add the message to the Postgres database using diesel
-    let res = message_manager::add_message(&message.username, &message.body);
-
-    HttpResponse::Ok().body(match res {
-        Ok(_) => "Message sent successfully!",
-        Err(e) => {
-            error!("Error sending message: {}", e);
-            "Error sending message!"
-        }
-    })
+    Ok(HttpResponse::Ok().json(new_user))
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    info!("Starting up server...");
-    HttpServer::new(|| {
-        App::new()
-            .service(hello)
-            .service(get_messages)
-            .service(send_message)
+    dotenv().ok();
+
+    let config = ExampleConfig::builder()
+        .override_with(EnvSource::new())
+        .try_build()
+        .unwrap();
+
+    let pool = config.pg.create_pool(None, NoTls).unwrap();
+
+    let server = HttpServer::new(move || {
+        App::new().app_data(web::Data::new(pool.clone())).service(
+            web::resource("/messages")
+                .route(web::post().to(add_message))
+                .route(web::get().to(get_messages)),
+        )
     })
-    .bind(("127.0.0.1", 8080))?
-    .run()
-    .await
+    .bind(config.server_addr.clone())?
+    .run();
+    println!("Server running at http://{}/", config.server_addr);
+
+    server.await
 }
