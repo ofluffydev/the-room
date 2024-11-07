@@ -13,6 +13,13 @@ mod models;
 
 use self::{errors::CustomErrors, models::Message};
 
+static ABOUT_MESSAGE: &str = "Welcome to The Room! You can retrieve all messages by sending a GET request to /messages or add a new message by sending a POST request to /messages. Enjoy your stay!";
+
+#[actix_web::get("/")]
+async fn about() -> HttpResponse {
+    HttpResponse::Ok().body(ABOUT_MESSAGE)
+}
+
 pub async fn get_messages(db_pool: web::Data<Pool>) -> Result<HttpResponse, Error> {
     let client: Client = db_pool.get().await.map_err(CustomErrors::PoolError)?;
 
@@ -46,11 +53,14 @@ async fn main() -> std::io::Result<()> {
     let pool = config.pg.create_pool(None, NoTls).unwrap();
 
     let server = HttpServer::new(move || {
-        App::new().app_data(web::Data::new(pool.clone())).service(
-            web::resource("/messages")
-                .route(web::post().to(add_message))
-                .route(web::get().to(get_messages)),
-        )
+        App::new()
+            .app_data(web::Data::new(pool.clone()))
+            .service(
+                web::resource("/messages")
+                    .route(web::post().to(add_message))
+                    .route(web::get().to(get_messages)),
+            )
+            .service(about)
     })
     .bind(config.server_addr.clone())?
     .run();
