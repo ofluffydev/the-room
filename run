@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# This script is used to start the application
+
+# Check if the .env file exists
+if [ ! -f .env ]; then
+    echo "You .env not found, creating one..."
+
+    # Create one that has
+    # DATABASE_URL=postgres://postgres:<RANDOM STRING OF CHARACTERS>@localhost/the_room
+    echo "DATABASE_URL=postgres://postgres:$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9')@localhost/the_room" >.env
+fi
+
+# Run diesel setup
+diesel setup
