@@ -1,12 +1,12 @@
-use std::collections::HashMap;
 use actix_web::{web, App, Error, HttpResponse, HttpServer};
 use confik::{Configuration as _, EnvSource};
 use deadpool_postgres::{Client, Pool};
 use dotenvy::dotenv;
-use tokio_postgres::NoTls;
 use rust_embed::RustEmbed;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
+use tokio_postgres::NoTls;
 
 use crate::config::ExampleConfig;
 
@@ -22,31 +22,30 @@ use self::{errors::CustomErrors, models::Message};
 struct WordList;
 
 pub struct ContentFilter {
-    banned_words: HashSet<String>
+    banned_words: HashSet<String>,
 }
 
 impl ContentFilter {
     pub fn new() -> Self {
-        // Load words from embedded file
-        let word_list = String::from_utf8(
-            WordList::get("banned.txt")
-                .expect("Failed to load banned words list")
-                .data
-                .to_vec()
-        ).expect("Invalid UTF-8");
-        
-        let banned_words: HashSet<String> = word_list
-            .lines()
-            .map(|s| s.trim().to_lowercase())
-            .collect();
-
+        let mut banned_words = HashSet::new();
+        for file in WordList::iter() {
+            if let Some(content) = WordList::get(&file) {
+                let words = std::str::from_utf8(content.data.as_ref()).unwrap();
+                for word in words.lines() {
+                    banned_words.insert(word.to_string());
+                }
+            }
+        }
         ContentFilter { banned_words }
     }
+}
 
+impl ContentFilter {
     pub fn filter_text(&self, text: &str) -> String {
         let mut filtered = text.to_string();
         for word in &self.banned_words {
             let replacement = "*".repeat(word.len());
+            // Perform case-insensitive replacement
             filtered = filtered.replace(word, &replacement);
         }
         filtered
@@ -79,9 +78,9 @@ pub async fn add_message(
     filter: web::Data<Arc<ContentFilter>>,
 ) -> Result<HttpResponse, Error> {
     let mut user_info: Message = user.into_inner();
-    
-    // Filter the message content
-    user_info.body = filter.filter_text(&user_info.body.to_lowercase());
+
+    // Filter the message content without converting to lowercase
+    user_info.body = filter.filter_text(&user_info.body);
 
     let client: Client = db_pool.get().await.map_err(CustomErrors::PoolError)?;
 
@@ -107,7 +106,7 @@ async fn main() -> std::io::Result<()> {
         .unwrap();
 
     let pool = config.pg.create_pool(None, NoTls).unwrap();
-    
+
     // Initialize content filter
     let filter = Arc::new(ContentFilter::new());
 
