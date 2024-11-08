@@ -1724,6 +1724,7 @@ dependencies = [
  "diesel",
  "dotenvy",
  "log",
+ "regex",
  "rust-embed",
  "serde",
  "serde_json",

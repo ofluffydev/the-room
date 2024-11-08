@@ -2,6 +2,7 @@ use actix_web::{web, App, Error, HttpResponse, HttpServer};
 use confik::{Configuration as _, EnvSource};
 use deadpool_postgres::{Client, Pool};
 use dotenvy::dotenv;
+use regex::RegexBuilder;
 use rust_embed::RustEmbed;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -29,11 +30,10 @@ impl ContentFilter {
     pub fn new() -> Self {
         let mut banned_words = HashSet::new();
         for file in WordList::iter() {
-            if let Some(content) = WordList::get(&file) {
-                let words = std::str::from_utf8(content.data.as_ref()).unwrap();
-                for word in words.lines() {
-                    banned_words.insert(word.to_string());
-                }
+            let content = WordList::get(&file).unwrap();
+            let words = std::str::from_utf8(&content.data).unwrap();
+            for word in words.lines() {
+                banned_words.insert(word.to_string());
             }
         }
         ContentFilter { banned_words }
@@ -45,8 +45,11 @@ impl ContentFilter {
         let mut filtered = text.to_string();
         for word in &self.banned_words {
             let replacement = "*".repeat(word.len());
-            // Perform case-insensitive replacement
-            filtered = filtered.replace(word, &replacement);
+            let re = RegexBuilder::new(&regex::escape(word))
+                .case_insensitive(true)
+                .build()
+                .unwrap();
+            filtered = re.replace_all(&filtered, &replacement as &str).to_string();
         }
         filtered
     }
