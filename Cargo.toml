@@ -17,4 +17,5 @@ serde_json = "1.0.132"
 tokio-pg-mapper = "0.2.0"
 tokio-pg-mapper-derive = "0.2.0"
 tokio-postgres = "0.7.12"
+actix-cors = "0.7.0"
 
