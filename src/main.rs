@@ -81,7 +81,7 @@ pub async fn add_message(
     let mut user_info: Message = user.into_inner();
     
     // Filter the message content
-    user_info.body = filter.filter_text(&user_info.body);
+    user_info.body = filter.filter_text(&user_info.body.to_lowercase());
 
     let client: Client = db_pool.get().await.map_err(CustomErrors::PoolError)?;
 
